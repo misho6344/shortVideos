@@ -6,9 +6,9 @@ python3 make_trailer.py -o trailer.mp4 --duration 170 --title "კრიმი�
 
 if errorlevel 1 (
   echo.
-  echo შეცდომა მოხდა. იხილე ზემოთ მოცემული ტექსტი.
+  echo An error occurred. See the messages above.
 ) else (
   echo.
-  echo მზადაა: trailer.mp4
+  echo Done: trailer.mp4
 )
 pause

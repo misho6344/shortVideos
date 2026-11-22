@@ -541,7 +541,7 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.archive is None:
-        raw = input("ვიდეოს ან არქივის მისამართი (ჩააგდე ფაილი ან ჩაწერე მისამართი): ")
+        raw = input("Enter the path to the video or archive (drag & drop the file here): ")
         raw = raw.strip().strip('"').strip("'")
         if not raw:
             sys.exit("error: no input file was given")
