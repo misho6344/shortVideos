@@ -547,6 +547,9 @@ def main() -> None:
             sys.exit("error: no input file was given")
         args.archive = Path(raw)
 
+    if args.title is None and sys.stdin.isatty():
+        args.title = input("Movie title for the title card (leave empty for none): ").strip() or None
+
     require_tools()
     if not args.archive.is_file():
         sys.exit(f"error: archive not found: {args.archive}")
