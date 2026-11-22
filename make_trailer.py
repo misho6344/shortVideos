@@ -473,7 +473,7 @@ def concat_parts(parts: list[str], out: Path, workdir: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("archive", type=Path, help="archive that contains the movie")
+    ap.add_argument("archive", type=Path, help="archive containing the movie, or a video file")
     ap.add_argument("-o", "--output", type=Path, default=Path("trailer.mp4"))
     ap.add_argument("--duration", type=float, default=170.0,
                     help="target length in seconds (capped at 180)")
@@ -514,11 +514,18 @@ def main() -> None:
     render_dir.mkdir(exist_ok=True)
 
     try:
-        log("Extracting archive...")
-        extracted = work / "extracted"
-        extract_archive(args.archive, extracted)
-
-        video, sub_file = find_media(extracted, args.subs)
+        if args.archive.suffix.lower() in VIDEO_EXTS:
+            # A plain video file was given: no extraction needed.
+            video = args.archive.resolve()
+            sub_file = args.subs
+            if sub_file is None:
+                candidate = video.with_suffix(".srt")
+                sub_file = candidate if candidate.is_file() else None
+        else:
+            log("Extracting archive...")
+            extracted = work / "extracted"
+            extract_archive(args.archive, extracted)
+            video, sub_file = find_media(extracted, args.subs)
         if args.no_subs:
             sub_file = None
         log(f"Movie: {video.name}" + (f" | subtitles: {sub_file.name}" if sub_file else " | no subtitles"))
