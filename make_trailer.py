@@ -54,6 +54,44 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr, flush=True)
 
 
+def draw_progress(label: str, fraction: float, done: bool = False) -> None:
+    """Single-line progress bar that is redrawn in place."""
+    fraction = max(0.0, min(1.0, fraction))
+    width = 30
+    filled = int(width * fraction)
+    bar = "#" * filled + "-" * (width - filled)
+    end = "\n" if done else ""
+    print(f"\r{label:<11} [{bar}] {fraction * 100:5.1f}%", end=end,
+          file=sys.stderr, flush=True)
+
+
+def run_ffmpeg(cmd: list[str], total: float, label: str, cwd: Path | None = None) -> str:
+    """Run an ffmpeg command, showing a progress bar based on its output time.
+
+    Returns ffmpeg's stderr text (used e.g. by the scene detector).
+    """
+    full = ["ffmpeg", "-progress", "pipe:1", "-nostats"] + cmd[1:]
+    with tempfile.TemporaryFile(mode="w+") as err:
+        proc = subprocess.Popen(full, stdout=subprocess.PIPE, stderr=err,
+                                text=True, cwd=cwd)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            if line.startswith("out_time_ms="):
+                try:
+                    secs = int(line.split("=", 1)[1]) / 1_000_000
+                except ValueError:
+                    continue
+                if total > 0:
+                    draw_progress(label, secs / total)
+        rc = proc.wait()
+        err.seek(0)
+        text = err.read()
+    draw_progress(label, 1.0 if rc == 0 else 0.0, done=True)
+    if rc != 0:
+        raise RuntimeError(f"ffmpeg failed ({label}):\n{text[-1500:]}")
+    return text
+
+
 def require_tools() -> None:
     for tool in ("ffmpeg", "ffprobe"):
         if shutil.which(tool) is None:
@@ -160,19 +198,19 @@ def probe_duration(video: Path) -> float:
     return float(info["format"]["duration"])
 
 
-def detect_scene_cuts(video: Path, threshold: float) -> list[float]:
+def detect_scene_cuts(video: Path, threshold: float, duration: float) -> list[float]:
     log("Detecting scene cuts (this decodes the whole film, it can take a while)...")
     vf = f"scale=320:-2,select='gt(scene,{threshold})',showinfo"
-    res = subprocess.run(
+    text = run_ffmpeg(
         ["ffmpeg", "-hide_banner", "-nostats", "-i", str(video),
          "-an", "-vf", vf, "-f", "null", "-"],
-        capture_output=True, text=True,
+        duration, "Scenes",
     )
-    cuts = [float(m.group(1)) for m in re.finditer(r"pts_time:([0-9.]+)", res.stderr)]
+    cuts = [float(m.group(1)) for m in re.finditer(r"pts_time:([0-9.]+)", text)]
     return sorted(cuts)
 
 
-def audio_energy_per_second(video: Path) -> list[float]:
+def audio_energy_per_second(video: Path, duration: float) -> list[float]:
     """RMS loudness for every second of the film (mono, 8 kHz)."""
     log("Measuring audio energy...")
     cmd = ["ffmpeg", "-v", "error", "-i", str(video), "-vn", "-ac", "1",
@@ -196,7 +234,9 @@ def audio_energy_per_second(video: Path) -> list[float]:
             else:
                 energies.append(0.0)
         pending = pending[full:]
+        draw_progress("Audio", len(energies) / max(duration, 1.0))
     proc.wait()
+    draw_progress("Audio", 1.0, done=True)
     return energies
 
 
@@ -434,7 +474,7 @@ def render_clip(video: Path, clip: Clip, out_name: str, workdir: Path,
         "-movflags", "+faststart",
         out_name,
     ]
-    subprocess.run(cmd, check=True, cwd=workdir)
+    run_ffmpeg(cmd, dur, "Render", cwd=workdir)
 
 
 def render_title_card(title: str, font_src: Path, workdir: Path, out_name: str) -> None:
@@ -533,9 +573,9 @@ def main() -> None:
         duration = probe_duration(video)
         log(f"Duration: {duration / 60:.1f} min")
 
-        cuts = detect_scene_cuts(video, args.scene_threshold)
+        cuts = detect_scene_cuts(video, args.scene_threshold, duration)
         log(f"Scene cuts found: {len(cuts)}")
-        energies = audio_energy_per_second(video)
+        energies = audio_energy_per_second(video, duration)
         subs = load_subs(sub_file) if sub_file else []
 
         score = build_scores(duration, energies, cuts, subs)
