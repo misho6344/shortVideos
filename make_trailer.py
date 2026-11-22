@@ -65,32 +65,6 @@ def draw_progress(label: str, fraction: float, done: bool = False) -> None:
           file=sys.stderr, flush=True)
 
 
-def download_file(url: str, dest_dir: Path) -> Path:
-    """Download a direct file link (e.g. an archive.org download URL) with progress."""
-    import urllib.parse
-    import urllib.request
-
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    name = urllib.parse.unquote(Path(urllib.parse.urlparse(url).path).name) or "download.bin"
-    target = dest_dir / name
-    req = urllib.request.Request(url, headers={"User-Agent": "make_trailer/1.0"})
-    log(f"Downloading {name} -> {target}")
-    with urllib.request.urlopen(req, timeout=60) as resp, open(target, "wb") as out:
-        total = int(resp.headers.get("Content-Length") or 0)
-        done = 0
-        while True:
-            chunk = resp.read(1024 * 1024)
-            if not chunk:
-                break
-            out.write(chunk)
-            done += len(chunk)
-            if total:
-                draw_progress("Download", done / total)
-    draw_progress("Download", 1.0, done=True)
-    log(f"Saved {done / 1_048_576:.1f} MB")
-    return target
-
-
 def run_ffmpeg(cmd: list[str], total: float, label: str, cwd: Path | None = None) -> str:
     """Run an ffmpeg command, showing a progress bar based on its output time.
 
@@ -567,20 +541,11 @@ def main() -> None:
     args = ap.parse_args()
 
     if args.archive is None:
-        print("Drag the movie file here, paste its path, or paste a direct download link (https://...).")
-        raw = input("Video path or link: ")
-        raw = raw.strip().strip('"').strip("'").strip()
+        raw = input("Enter the path to the video or archive (drag & drop the file here): ")
+        raw = raw.strip().strip('"').strip("'")
         if not raw:
-            sys.exit("error: no input was given")
-        if raw.lower().startswith(("http://", "https://")):
-            try:
-                args.archive = download_file(raw, Path.cwd() / "downloads")
-            except Exception as exc:  # network or HTTP errors
-                sys.exit(f"error: download failed: {exc}")
-        else:
-            if not Path(raw).is_file():
-                sys.exit(f"error: file not found: {raw}")
-            args.archive = Path(raw)
+            sys.exit("error: no input file was given")
+        args.archive = Path(raw)
 
     if args.title is None and sys.stdin.isatty():
         args.title = input("Movie title for the title card (leave empty for none): ").strip() or None
