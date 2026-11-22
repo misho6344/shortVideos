@@ -513,7 +513,8 @@ def concat_parts(parts: list[str], out: Path, workdir: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("archive", type=Path, help="archive containing the movie, or a video file")
+    ap.add_argument("archive", type=Path, nargs="?",
+                    help="archive containing the movie, or a video file (asked for if omitted)")
     ap.add_argument("-o", "--output", type=Path, default=Path("trailer.mp4"))
     ap.add_argument("--duration", type=float, default=170.0,
                     help="target length in seconds (capped at 180)")
@@ -538,6 +539,13 @@ def main() -> None:
     ap.add_argument("--order", choices=["chronological", "score"], default="chronological")
     ap.add_argument("--work-dir", type=Path, help="keep intermediate files here")
     args = ap.parse_args()
+
+    if args.archive is None:
+        raw = input("ვიდეოს ან არქივის მისამართი (ჩააგდე ფაილი ან ჩაწერე მისამართი): ")
+        raw = raw.strip().strip('"').strip("'")
+        if not raw:
+            sys.exit("error: no input file was given")
+        args.archive = Path(raw)
 
     require_tools()
     if not args.archive.is_file():
